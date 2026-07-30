@@ -186,6 +186,157 @@ function App() {
     }
   }
 
+  const handlePrintCard = () => {
+    if (!selectedStudent) return
+
+    const printWindow = window.open('', '_blank', 'width=900,height=700')
+    if (!printWindow) return
+
+    const safeName = String(selectedStudent.name || 'Student')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+
+    const safeRollNo = String(selectedStudent.rollNo || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    const safeClassName = String(selectedStudent.className || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    const issueDate = new Date().toLocaleDateString('en-GB')
+    const photoMarkup = selectedStudent.photo
+      ? `<img src="${selectedStudent.photo}" alt="${safeName}" />`
+      : '<div class="avatar-placeholder">Photo</div>'
+    const signatureMarkup = selectedStudent.signature
+      ? `<img class="signature-preview" src="${selectedStudent.signature}" alt="Signature" />`
+      : '<span class="footer-tag">✍ Signature</span>'
+
+    printWindow.document.write(`
+      <!doctype html>
+      <html lang="en">
+        <head>
+          <meta charset="utf-8" />
+          <title>Student ID Card</title>
+          <style>
+            :root { color-scheme: light only; }
+            body {
+              margin: 0;
+              font-family: Inter, Arial, sans-serif;
+              background: #f8fafc;
+              display: flex;
+              justify-content: center;
+              align-items: center;
+              min-height: 100vh;
+              padding: 20px;
+              box-sizing: border-box;
+            }
+            .id-card {
+              width: 100%;
+              max-width: 760px;
+              border: 1.5px solid #cbd5e1;
+              border-radius: 24px;
+              overflow: hidden;
+              background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+              box-shadow: 0 20px 40px rgba(15, 23, 42, 0.16);
+            }
+            .card-top {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              padding: 18px 22px;
+              background: linear-gradient(135deg, #0f172a 0%, #0f766e 48%, #2563eb 100%);
+              color: white;
+            }
+            .card-label {
+              margin: 0 0 4px;
+              font-size: 0.72rem;
+              letter-spacing: 0.14em;
+              text-transform: uppercase;
+              opacity: 0.92;
+            }
+            .card-top h3 { margin: 0; font-size: 1.2rem; }
+            .card-top-right { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+            .school-chip, .status-pill {
+              display: inline-flex;
+              align-items: center;
+              border-radius: 999px;
+              padding: 6px 10px;
+              font-size: 0.78rem;
+              font-weight: 700;
+            }
+            .school-chip { background: rgba(255,255,255,0.16); color: #f8fafc; border: 1px solid rgba(255,255,255,0.2); }
+            .status-pill { background: white; color: #2563eb; }
+            .card-body { display: flex; gap: 22px; padding: 24px 24px 18px; align-items: flex-start; }
+            .avatar-box {
+              width: 132px;
+              height: 152px;
+              border-radius: 18px;
+              background: linear-gradient(135deg, #e2e8f0 0%, #f8fafc 100%);
+              display: grid;
+              place-items: center;
+              border: 2px solid rgba(15, 118, 110, 0.18);
+              color: #475569;
+              font-weight: 600;
+              overflow: hidden;
+              flex-shrink: 0;
+            }
+            .avatar-box img { width: 100%; height: 100%; object-fit: cover; }
+            .avatar-placeholder { font-size: 0.95rem; }
+            .info-list { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+            .info-list h4 { margin: 0 0 4px; font-size: 1.25rem; color: #082f49; }
+            .info-list p {
+              margin: 0;
+              color: #334155;
+              font-size: 0.95rem;
+              display: flex;
+              justify-content: space-between;
+              gap: 10px;
+              padding: 8px 10px;
+              border-radius: 10px;
+              background: rgba(248, 250, 252, 0.95);
+              border: 1px solid #e2e8f0;
+            }
+            .info-list strong { color: #0f172a; }
+            .card-footer { display: flex; justify-content: space-between; align-items: center; padding: 14px 24px 20px; color: #64748b; border-top: 1px solid rgba(148, 163, 184, 0.22); font-size: 0.92rem; background: linear-gradient(135deg, #fbfdff 0%, #f8fafc 100%); }
+            .footer-tag { display: inline-flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 999px; background: rgba(15, 118, 110, 0.08); color: #0f766e; font-weight: 600; }
+            .signature-preview { max-height: 38px; max-width: 120px; object-fit: contain; background: white; padding: 4px 8px; border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.25); }
+            @media print {
+              body { background: white; padding: 0; }
+              .id-card { box-shadow: none; border-color: #cbd5e1; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="id-card">
+            <div class="card-top">
+              <div>
+                <p class="card-label">Student Identity Card</p>
+                <h3>Bright Future School</h3>
+              </div>
+              <div class="card-top-right">
+                <span class="school-chip">Academic Year 2026</span>
+                <span class="status-pill">Active</span>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="avatar-box">${photoMarkup}</div>
+              <div class="info-list">
+                <h4>${safeName}</h4>
+                <p><strong>Roll No</strong><span>${safeRollNo}</span></p>
+                <p><strong>Class</strong><span>${safeClassName}</span></p>
+                <p><strong>Issue Date</strong><span>${issueDate}</span></p>
+              </div>
+            </div>
+            <div class="card-footer">
+              <span class="footer-tag">📘 Bright Future School</span>
+              ${signatureMarkup}
+            </div>
+          </div>
+        </body>
+      </html>
+    `)
+
+    printWindow.document.close()
+    printWindow.focus()
+    setTimeout(() => printWindow.print(), 250)
+  }
+
   return (
     <div className="app-shell">
       <header className="hero-section">
@@ -359,7 +510,7 @@ function App() {
                 </div>
               </div>
 
-              <button type="button" className="print-btn" onClick={() => window.print()}>
+              <button type="button" className="print-btn" onClick={handlePrintCard}>
                 Print / Save Card
               </button>
             </>
