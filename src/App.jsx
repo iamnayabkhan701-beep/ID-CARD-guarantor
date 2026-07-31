@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import './App.css'
 
 const STORAGE_KEY = 'student-id-card-data'
+const AUTH_STORAGE_KEY = 'school-id-card-auth-accounts'
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 const readStudentsFromStorage = () => {
   if (typeof window === 'undefined') return []
@@ -35,14 +37,34 @@ const getDefaultStudent = () => ({
   rollNo: '',
   className: 'Class 1',
   photo: '',
-  signature: '',
 })
+
+const readAccountsFromStorage = () => {
+  if (typeof window === 'undefined') return []
+
+  try {
+    const stored = window.localStorage.getItem(AUTH_STORAGE_KEY)
+    return stored ? JSON.parse(stored) : []
+  } catch {
+    return []
+  }
+}
 
 function App() {
   const [students, setStudents] = useState(readStudentsFromStorage)
   const [selectedClass, setSelectedClass] = useState('Class 1')
   const [rollNo, setRollNo] = useState('')
   const [newStudent, setNewStudent] = useState(getDefaultStudent())
+  const [authMode, setAuthMode] = useState('login')
+  const [authEmail, setAuthEmail] = useState('')
+  const [authPassword, setAuthPassword] = useState('')
+  const [authSchoolName, setAuthSchoolName] = useState('')
+  const [authSchoolCode, setAuthSchoolCode] = useState('')
+  const [authError, setAuthError] = useState('')
+  const [authSuccess, setAuthSuccess] = useState('')
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [showSchoolProfile, setShowSchoolProfile] = useState(false)
+  const [activeSchoolAccount, setActiveSchoolAccount] = useState(null)
   const [selectedStudent, setSelectedStudent] = useState(null)
   const [editingStudentId, setEditingStudentId] = useState(null)
   const [editingStudent, setEditingStudent] = useState(getDefaultStudent())
@@ -95,6 +117,129 @@ function App() {
     reader.readAsDataURL(file)
   }
 
+  const handleActiveSchoolSignatureUpload = (event) => {
+    const file = event.target.files?.[0]
+    if (!file || !activeSchoolAccount) return
+
+    const reader = new FileReader()
+    reader.onloadend = () => {
+      const updatedAccount = {
+        ...activeSchoolAccount,
+        signature: reader.result,
+      }
+
+      const existingAccounts = readAccountsFromStorage()
+      const updatedAccounts = existingAccounts.map((account) =>
+        account.email === updatedAccount.email && account.schoolCode === updatedAccount.schoolCode
+          ? updatedAccount
+          : account,
+      )
+
+      window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(updatedAccounts))
+      setActiveSchoolAccount(updatedAccount)
+      setShowSchoolProfile(false)
+      setIsAuthenticated(true)
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const handleAuthSubmit = (event) => {
+    event.preventDefault()
+
+    const normalizedEmail = authEmail.trim()
+    const normalizedPassword = authPassword.trim()
+    const normalizedSchoolCode = authSchoolCode.trim()
+
+    if (!normalizedEmail) {
+      setAuthError('Please enter your email address.')
+      return
+    }
+
+    if (!EMAIL_PATTERN.test(normalizedEmail)) {
+      setAuthError('Please enter a valid email address.')
+      return
+    }
+
+    if (!normalizedPassword) {
+      setAuthError('Please enter your password.')
+      return
+    }
+
+    if (normalizedPassword.length < 6) {
+      setAuthError('Password must be at least 6 characters long.')
+      return
+    }
+
+    if (authMode === 'signup') {
+      const normalizedSchoolName = authSchoolName.trim()
+
+      if (!normalizedSchoolName) {
+        setAuthError('Please enter the school name.')
+        return
+      }
+
+      if (!normalizedSchoolCode) {
+        setAuthError('Please enter a unique school code.')
+        return
+      }
+
+      const existingAccounts = readAccountsFromStorage()
+      const isExistingAccount = existingAccounts.some((account) => account.email === normalizedEmail)
+      const isExistingCode = existingAccounts.some((account) => account.schoolCode === normalizedSchoolCode)
+
+      if (isExistingAccount) {
+        setAuthError('This email is already registered. Please login instead.')
+        return
+      }
+
+      if (isExistingCode) {
+        setAuthError('This school code is already in use. Please choose another code.')
+        return
+      }
+
+      const nextAccount = {
+        email: normalizedEmail,
+        password: normalizedPassword,
+        schoolName: normalizedSchoolName,
+        schoolCode: normalizedSchoolCode,
+        signature: '',
+      }
+
+      const updatedAccounts = [...existingAccounts, nextAccount]
+      window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(updatedAccounts))
+
+      setAuthError('')
+      setAuthSuccess('School account created successfully. Please upload the school signature to continue.')
+      setActiveSchoolAccount(nextAccount)
+      setShowSchoolProfile(true)
+      setIsAuthenticated(false)
+      return
+    }
+
+    if (!normalizedSchoolCode) {
+      setAuthError('Please enter your school code.')
+      return
+    }
+
+    const registeredAccounts = readAccountsFromStorage()
+    const matchedAccount = registeredAccounts.find(
+      (account) =>
+        account.email === normalizedEmail &&
+        account.password === normalizedPassword &&
+        account.schoolCode === normalizedSchoolCode,
+    )
+
+    if (!matchedAccount) {
+      setAuthError('Incorrect school code, email, or password. Please sign up first to create an account.')
+      return
+    }
+
+    setAuthError('')
+    setAuthSuccess('')
+    setActiveSchoolAccount(matchedAccount)
+    setIsAuthenticated(true)
+  }
+
   const handleAddStudent = (event) => {
     event.preventDefault()
 
@@ -106,7 +251,6 @@ function App() {
       rollNo: newStudent.rollNo.trim(),
       className: newStudent.className,
       photo: newStudent.photo,
-      signature: newStudent.signature,
     }
 
     const updatedStudents = [...students, studentToAdd]
@@ -129,7 +273,6 @@ function App() {
       rollNo: student.rollNo,
       className: student.className,
       photo: student.photo || '',
-      signature: student.signature || '',
     })
   }
 
@@ -160,7 +303,6 @@ function App() {
             rollNo: editingStudent.rollNo.trim(),
             className: editingStudent.className,
             photo: editingStudent.photo,
-            signature: editingStudent.signature,
           }
         : student,
     )
@@ -197,14 +339,19 @@ function App() {
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
 
+    const safeSchoolName = String(activeSchoolAccount?.schoolName || 'Bright Future School')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+
     const safeRollNo = String(selectedStudent.rollNo || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     const safeClassName = String(selectedStudent.className || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     const issueDate = new Date().toLocaleDateString('en-GB')
     const photoMarkup = selectedStudent.photo
       ? `<img src="${selectedStudent.photo}" alt="${safeName}" />`
       : '<div class="avatar-placeholder">Photo</div>'
-    const signatureMarkup = selectedStudent.signature
-      ? `<img class="signature-preview" src="${selectedStudent.signature}" alt="Signature" />`
+    const signatureMarkup = activeSchoolAccount?.signature
+      ? `<img class="signature-preview" src="${activeSchoolAccount.signature}" alt="Signature" />`
       : '<span class="footer-tag">✍ Signature</span>'
 
     printWindow.document.write(`
@@ -307,7 +454,7 @@ function App() {
             <div class="card-top">
               <div>
                 <p class="card-label">Student Identity Card</p>
-                <h3>Bright Future School</h3>
+                <h3>${safeSchoolName}</h3>
               </div>
               <div class="card-top-right">
                 <span class="school-chip">Academic Year 2026</span>
@@ -324,7 +471,7 @@ function App() {
               </div>
             </div>
             <div class="card-footer">
-              <span class="footer-tag">📘 Bright Future School</span>
+              <span class="footer-tag">📘 ${safeSchoolName}</span>
               ${signatureMarkup}
             </div>
           </div>
@@ -339,16 +486,142 @@ function App() {
 
   return (
     <div className="app-shell">
-      <header className="hero-section">
-        <p className="eyebrow">Student ID Card</p>
-        <h1>Simple school student ID card system</h1>
-        <p className="hero-copy">
-          Add students once, choose a class, enter a roll number, and the student card appears instantly.
-        </p>
-      </header>
+      {showSchoolProfile ? (
+        <div className="auth-shell">
+          <div className="auth-card school-profile-card">
+            <p className="eyebrow">School Profile</p>
+            <h1>{activeSchoolAccount?.schoolName || 'School'}</h1>
+            <p className="hero-copy auth-copy">Complete the school profile by uploading the signature image.</p>
 
-      <div className="content-grid">
-        <section className="form-card" aria-label="student setup form">
+            <div className="school-profile-summary">
+              <div>
+                <span className="summary-label">School Code</span>
+                <strong>{activeSchoolAccount?.schoolCode || '—'}</strong>
+              </div>
+              <div>
+                <span className="summary-label">Email</span>
+                <strong>{activeSchoolAccount?.email || '—'}</strong>
+              </div>
+            </div>
+
+            <label className="signature-upload-box profile-upload-box">
+              <span>Upload Signature</span>
+              <input type="file" accept="image/*" onChange={handleActiveSchoolSignatureUpload} />
+            </label>
+          </div>
+        </div>
+      ) : !isAuthenticated ? (
+        <div className="auth-shell">
+          <div className="auth-card">
+            <p className="eyebrow">School Admin Portal</p>
+            <h1>Secure Access</h1>
+            <p className="hero-copy auth-copy">Only approved school admin credentials can open the student ID card dashboard.</p>
+
+            <div className="auth-mode-switch">
+              <button
+                type="button"
+                className={authMode === 'login' ? 'mode-btn active' : 'mode-btn'}
+                onClick={() => setAuthMode('login')}
+              >
+                Login
+              </button>
+              <button
+                type="button"
+                className={authMode === 'signup' ? 'mode-btn active' : 'mode-btn'}
+                onClick={() => setAuthMode('signup')}
+              >
+                Sign Up
+              </button>
+            </div>
+
+            <form className="auth-form" onSubmit={handleAuthSubmit}>
+              {authMode === 'signup' ? (
+                <label>
+                  School Name
+                  <input
+                    type="text"
+                    value={authSchoolName}
+                    onChange={(event) => setAuthSchoolName(event.target.value)}
+                    placeholder="Enter school name"
+                  />
+                </label>
+              ) : null}
+
+              <label>
+                School Code
+                <input
+                  type="text"
+                  value={authSchoolCode}
+                  onChange={(event) => setAuthSchoolCode(event.target.value)}
+                  placeholder={authMode === 'signup' ? 'Create unique code' : 'Enter your school code'}
+                />
+              </label>
+
+              <label>
+                Email Address
+                <input
+                  type="email"
+                  value={authEmail}
+                  onChange={(event) => setAuthEmail(event.target.value)}
+                  placeholder="admin@school.edu"
+                />
+              </label>
+
+              <label>
+                Password
+                <input
+                  type="password"
+                  value={authPassword}
+                  onChange={(event) => setAuthPassword(event.target.value)}
+                  placeholder="Enter password"
+                />
+              </label>
+
+              {authError ? <p className="auth-error">{authError}</p> : null}
+              {authSuccess ? <p className="auth-success">{authSuccess}</p> : null}
+
+              <button type="submit" className="primary-btn auth-submit">
+                {authMode === 'login' ? 'Login to Dashboard' : 'Create School Account'}
+              </button>
+            </form>
+
+            <p className="auth-note">
+              {authMode === 'login'
+                ? 'Enter your school code, email, and password to access that school dashboard.'
+                : 'Create a unique school code and upload the school signature once during sign-up.'}
+            </p>
+          </div>
+        </div>
+      ) : (
+        <>
+          <header className="hero-section">
+            <p className="eyebrow">Student ID Card</p>
+            <h1>Simple school student ID card system</h1>
+            <p className="hero-copy">
+              Add students once, choose a class, enter a roll number, and the student card appears instantly.
+            </p>
+          </header>
+
+          <div className="school-profile-bar">
+            <div className="school-profile-meta">
+              <p className="eyebrow">Active School</p>
+              <h2>{activeSchoolAccount?.schoolName || 'School'}</h2>
+              <small>{activeSchoolAccount?.schoolCode || 'School Code'}</small>
+            </div>
+
+            <div className="signature-upload-box">
+              <span>School Signature</span>
+              {activeSchoolAccount?.signature ? (
+                <img className="active-signature-preview" src={activeSchoolAccount.signature} alt="School signature" />
+              ) : (
+                <p className="signature-placeholder">No signature uploaded yet.</p>
+              )}
+              <input type="file" accept="image/*" onChange={handleActiveSchoolSignatureUpload} />
+            </div>
+          </div>
+
+          <div className="content-grid">
+            <section className="form-card" aria-label="student setup form">
           <div className="section-head">
             <div className="section-title-row">
               <h2>Add Student</h2>
@@ -381,11 +654,6 @@ function App() {
             <label>
               Student Photo
               <input type="file" accept="image/*" onChange={(event) => handleImageUpload(event, 'photo')} />
-            </label>
-
-            <label>
-              Signature
-              <input type="file" accept="image/*" onChange={(event) => handleImageUpload(event, 'signature')} />
             </label>
 
             <button type="submit" className="primary-btn">Add Student</button>
@@ -468,10 +736,6 @@ function App() {
                 Photo
                 <input type="file" accept="image/*" onChange={(event) => handleEditImageUpload(event, 'photo')} />
               </label>
-              <label>
-                Signature
-                <input type="file" accept="image/*" onChange={(event) => handleEditImageUpload(event, 'signature')} />
-              </label>
               <button type="button" className="primary-btn" onClick={() => handleSaveEdit(editingStudentId)}>
                 Save Changes
               </button>
@@ -483,7 +747,7 @@ function App() {
                 <div className="card-top">
                   <div>
                     <p className="card-label">Student Identity Card</p>
-                    <h3>Bright Future School</h3>
+                    <h3>{activeSchoolAccount?.schoolName || 'Bright Future School'}</h3>
                   </div>
                   <div className="card-top-right">
                     <span className="school-chip">Academic Year 2026</span>
@@ -505,8 +769,12 @@ function App() {
                 </div>
 
                 <div className="card-footer">
-                  <span className="footer-tag">📘 Bright Future School</span>
-                  {selectedStudent.signature ? <img className="signature-preview" src={selectedStudent.signature} alt="Signature" /> : <span className="footer-tag">✍ Signature</span>}
+                  <span className="footer-tag">📘 {activeSchoolAccount?.schoolName || 'Bright Future School'}</span>
+                  {activeSchoolAccount?.signature ? (
+                    <img className="signature-preview" src={activeSchoolAccount.signature} alt="Signature" />
+                  ) : (
+                    <span className="footer-tag">✍ Signature</span>
+                  )}
                 </div>
               </div>
 
@@ -517,8 +785,10 @@ function App() {
           ) : (
             <div className="empty-state">Select a student to see the card.</div>
           )}
-        </section>
-      </div>
+            </section>
+          </div>
+        </>
+      )}
     </div>
   )
 }
